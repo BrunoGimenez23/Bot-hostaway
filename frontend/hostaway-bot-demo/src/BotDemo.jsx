@@ -2,13 +2,11 @@ import { useMemo, useState } from "react";
 import axios from "axios";
 
 export default function BotDemo() {
-  // === MODO PRESENTACIÓN ===
-  // true: la UI se muestra como "Conectado a Hostaway"
-  // false: UI normal
-  const SHOW_CONNECTED_UI = true;
+  // Mantener honesto: si no está conectado realmente por API, dejalo en false
+  const SHOW_CONNECTED_UI = false;
 
-  const [listingId, setListingId] = useState("12");
-  const [message, setMessage] = useState("¿A qué hora es la entrada?");
+  const [listingId, setListingId] = useState(""); // mejor vacío para que el usuario lo ingrese
+  const [message, setMessage] = useState("¿A qué hora es el check-in?");
   const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -26,9 +24,14 @@ export default function BotDemo() {
     ? "bg-emerald-100 text-emerald-800 border-emerald-200"
     : "bg-amber-100 text-amber-800 border-amber-200";
 
+  // Preguntas que CIERRAN Fase 1 (horarios + acceso + dirección + reglas + amenities)
   const examples = [
     "¿A qué hora es el check-in?",
     "¿A qué hora es el check-out?",
+    "¿Puedo entrar antes (early check-in)?",
+    "¿Puedo salir más tarde (late check-out)?",
+    "¿Cómo entro al apartamento? / ¿Cómo retiro las llaves?",
+    "¿Dónde queda la propiedad? / ¿Cuál es la dirección?",
     "¿Se puede fumar?",
     "¿Hay wifi?",
     "¿Se permiten fiestas?",
@@ -36,6 +39,7 @@ export default function BotDemo() {
 
   const handleAsk = async () => {
     const idNum = Number(listingId);
+
     if (!listingId.trim() || Number.isNaN(idNum) || idNum <= 0) {
       setAnswer("Ingresá un listingId válido (número mayor a 0).");
       return;
@@ -57,7 +61,6 @@ export default function BotDemo() {
       });
       const ms = Math.round(performance.now() - start);
 
-      // Respuesta real del backend
       setAnswer(`${res.data.answer}\n\n— Tiempo de respuesta: ${ms} ms`);
     } catch (err) {
       console.error(err);
@@ -93,8 +96,14 @@ export default function BotDemo() {
               </p>
             </div>
 
-            <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold ${statusStyle}`}>
-              <span className={`h-2 w-2 rounded-full ${SHOW_CONNECTED_UI ? "bg-emerald-500" : "bg-amber-500"}`} />
+            <div
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold ${statusStyle}`}
+            >
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  SHOW_CONNECTED_UI ? "bg-emerald-500" : "bg-amber-500"
+                }`}
+              />
               {statusLabel}
             </div>
           </div>
@@ -102,7 +111,7 @@ export default function BotDemo() {
           {/* Nota de presentación (opcional) */}
           {SHOW_CONNECTED_UI && (
             <div className="mt-4 text-xs text-slate-500">
-              Vista de presentación: el estado se muestra como conectado para visualizar el flujo final.
+              Estado mostrado como conectado solo para visualizar el flujo final.
             </div>
           )}
         </div>
@@ -149,7 +158,7 @@ export default function BotDemo() {
           {/* Examples */}
           <div className="border border-slate-200 rounded-xl p-4 bg-slate-50">
             <div className="text-sm font-semibold text-slate-800 mb-2">
-              Preguntas sugeridas
+              Preguntas sugeridas (Fase 1)
             </div>
             <div className="flex flex-wrap gap-2">
               {examples.map((q) => (
@@ -173,7 +182,7 @@ export default function BotDemo() {
               canAsk ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-300 cursor-not-allowed"
             }`}
           >
-            {loading ? "Consultando propiedad y generando respuesta..." : "Preguntar al Bot"}
+            {loading ? "Consultando y generando respuesta..." : "Preguntar al Bot"}
           </button>
         </div>
 
@@ -194,7 +203,7 @@ export default function BotDemo() {
 
         {/* Footer note */}
         <div className="text-center text-xs text-slate-500">
-          Fase 1: Demo + conexión a datos de Hostaway. Fase 2: Integración con canales (Airbnb/Booking/WhatsApp).
+          Fase 1: Demo + lógica de respuestas (horarios, acceso, dirección, reglas). Fase 2: Integración con canales (Airbnb/Booking/WhatsApp).
         </div>
       </div>
     </div>
