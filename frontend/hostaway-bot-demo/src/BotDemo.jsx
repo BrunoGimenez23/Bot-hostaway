@@ -26,16 +26,25 @@ export default function BotDemo() {
 
   // Preguntas que CIERRAN Fase 1 (horarios + acceso + dirección + reglas + amenities)
   const examples = [
-    "¿A qué hora es el check-in?",
-    "¿A qué hora es el check-out?",
-    "¿Puedo entrar antes (early check-in)?",
-    "¿Puedo salir más tarde (late check-out)?",
-    "¿Cómo entro al apartamento? / ¿Cómo retiro las llaves?",
-    "¿Dónde queda la propiedad? / ¿Cuál es la dirección?",
-    "¿Se puede fumar?",
-    "¿Hay wifi?",
-    "¿Se permiten fiestas?",
-  ];
+  "¿A qué hora es el check-in?",
+  "¿A qué hora es el check-out?",
+  "¿Puedo entrar antes (early check-in)?",
+  "¿Puedo salir más tarde (late check-out)?",
+  "¿Cómo entro al apartamento? / ¿Cómo retiro las llaves?",
+  "¿Dónde queda la propiedad? / ¿Cuál es la dirección?",
+  "¿Se puede fumar?",
+  "¿Hay wifi?",
+  "¿Se permiten fiestas?",
+  // NUEVAS (basadas en chats reales)
+  "¿Dónde puedo dejar el auto estacionado? ¿Hay parking cerca?",
+  "¿El precio incluye todos los servicios (luz, agua, gas, internet)?",
+  "¿El alojamiento incluye toallas, sábanas y secador de pelo?",
+  "¿Hay sombrilla para la playa?",
+  "Hola, te acabo de reservar para la noche del jueves.",
+  "Llego mañana 21:40, ¿puedo hacer el check-in tipo 23:00?",
+  "¿El apartamento está disponible para hoy?",
+];
+
 
   const handleAsk = async () => {
     const idNum = Number(listingId);
