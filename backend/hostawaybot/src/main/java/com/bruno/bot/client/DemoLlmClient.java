@@ -45,7 +45,7 @@ public class DemoLlmClient implements LlmClient {
             if (prompt.toLowerCase(Locale.ROOT).contains("amenities") && prompt.toLowerCase(Locale.ROOT).contains("wifi")) {
                 return "Sí, la propiedad cuenta con WiFi.";
             }
-            return "En la información disponible no figura WiFi. Si querés, lo confirmo.";
+            return "Ew la información disponible no figura WiFi. Si querés, lo confirmo.";
         }
 
         if (asksParty) {
