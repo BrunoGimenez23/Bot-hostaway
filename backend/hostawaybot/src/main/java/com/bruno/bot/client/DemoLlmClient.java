@@ -3,6 +3,7 @@ package com.bruno.bot.client;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.text.Normalizer;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -27,47 +28,123 @@ public class DemoLlmClient implements LlmClient {
     private static final Pattern QUESTION_BLOCK =
             Pattern.compile("pregunta\\s*:\\s*(.*)$", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
+    private static final Pattern TIME_HHMM =
+            Pattern.compile("\\b([01]?\\d|2[0-3]):[0-5]\\d\\b");
+
+    private static final Pattern WIFI_LINE =
+            Pattern.compile("\\bwifi\\s*:\\s*(si|no|true|false)\\b", Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern AC_LINE =
+            Pattern.compile("\\baire\\s+acondicionado\\s*:\\s*(si|no|true|false)\\b", Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern SERVICES_INCLUDED_LINE =
+            Pattern.compile("\\bservicios\\s+incluidos\\s*:\\s*(si|no|true|false)\\b", Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern EQUIPMENT_LINE =
+            Pattern.compile("\\bequipamiento\\s*:\\s*(.+)$", Pattern.CASE_INSENSITIVE | Pattern.MULTILINE);
+
+    private static final Pattern PARKING_LINE =
+            Pattern.compile("\\bestacionamiento\\s*:\\s*(si|no|true|false)\\b", Pattern.CASE_INSENSITIVE);
+
     @Override
     public String getAnswer(String prompt) {
 
-        String question = extractQuestion(prompt);
-        String q = question.toLowerCase(Locale.ROOT);
-        String promptLower = prompt.toLowerCase(Locale.ROOT);
+        String questionRaw = extractQuestion(prompt);
+        String q = norm(questionRaw);
+        String p = norm(prompt);
 
         String checkIn = extract(prompt, CHECKIN_TIME);
         String checkOut = extract(prompt, CHECKOUT_TIME);
         String address = extract(prompt, ADDRESS_LINE);
         String access = extract(prompt, ACCESS_LINE);
 
+        Boolean hasWifi = parseYesNo(prompt, WIFI_LINE);
+        Boolean hasAC = parseYesNo(prompt, AC_LINE);
+        Boolean servicesIncluded = parseYesNo(prompt, SERVICES_INCLUDED_LINE);
+        Boolean hasParking = parseYesNo(prompt, PARKING_LINE);
+        String equipment = extract(prompt, EQUIPMENT_LINE);
+
         // ===== Intenciones =====
-        boolean asksCheckIn = containsAny(q, "check-in", "checkin", "entrada", "llegada");
-        boolean asksCheckOut = containsAny(q, "check-out", "checkout", "salida");
+        boolean asksAccess = containsAny(q, "llave", "llaves", "acceso", "como entro", "codigo", "smart lock");
+        boolean asksAddress = containsAny(q, "direccion", "donde queda", "ubicacion", "como llego");
 
-        boolean asksEarly = containsAny(q, "early", "entrar antes", "llegar antes", "llego antes", "check in antes", "check-in antes");
-        boolean asksLate = containsAny(q, "late", "salir más tarde", "salir mas tarde", "llego tarde", "llegar tarde", "late checkout", "late check-out");
+        boolean asksWifi = containsAny(q, "wifi", "internet");
 
-        boolean asksAccess = containsAny(q, "llave", "llaves", "acceso", "cómo entro", "como entro", "codigo", "código", "smart lock", "caja de llaves");
-        boolean asksAddress = containsAny(q, "dirección", "direccion", "dónde queda", "donde queda", "ubicación", "ubicacion", "cómo llego", "como llego");
+        // FIX 1: NO usar "ac" suelto (dispara por "acabo", "acerca", etc.)
+        // Solo frases seguras y/o "a/c".
+        boolean asksAC = containsAny(q, "aire acondicionado", "a/c", "aire frio", "aire frio");
 
-        boolean asksWifi = containsAny(q, "wifi", "wi-fi", "internet");
-        boolean asksAC = containsAny(q, "aire", "aire acondicionado", "ac");
+        boolean asksParking = containsAny(q, "parking", "estacionar", "estacionamiento", "auto");
 
-        boolean asksParking = containsAny(q, "auto", "estacionar", "parking", "estacionamiento");
-        boolean asksServices = containsAny(q, "servicios", "luz", "gas", "electricidad", "incluye", "incluido", "incluye todos los servicios");
-        boolean asksEquipment = containsAny(q, "toall", "toallon", "toallón", "sábana", "sabana", "sábanas", "sabana", "secador", "sombrilla");
+        boolean asksEquipment = containsAny(q,
+                "toalla", "toallas", "toallon", "sabana", "sabanas", "secador", "sombrilla", "parasol", "ropa de cama"
+        );
 
-        boolean asksAvailability = containsAny(q, "disponible", "para hoy", "esta disponible", "está disponible", "disponibilidad");
-        boolean asksReservationConfirm = containsAny(q, "reservé", "reserve", "reservé", "acabo de reservar", "reserva confirmada", "te acabo de reservar");
+        boolean mentionsUtilities = containsAny(q, "servicios", "luz", "agua", "gas", "electricidad", "internet");
+        boolean asksServices = mentionsUtilities && containsAny(q, "incluye", "incluido", "incluidos", "incluyen");
 
-        boolean asksBarbecue = containsAny(q, "barbacoa", "asado", "cumple", "cumpleaños", "parrilla");
+        boolean asksCheckIn = containsAny(q, "check in", "check-in", "checkin", "entrada");
+        boolean asksCheckOut = containsAny(q, "check out", "check-out", "checkout", "salida");
 
-        // NUEVO: Fumar y fiestas (lo que te faltaba)
-        boolean asksSmoking = containsAny(q, "fumar", "cigarro", "cigarrillo", "smoke");
-        boolean asksParty = containsAny(q, "fiesta", "fiestas", "party", "ruido", "cumple", "cumpleaños");
+        boolean asksEarly = containsAny(q, "early", "entrar antes", "check in antes", "check-in antes");
+        boolean asksLateCheckout = containsAny(q, "late checkout", "late check-out", "salir mas tarde", "checkout mas tarde");
+        boolean asksLateArrival = containsAny(q, "llego tarde", "llego a las", "llegamos a las", "llego tipo", "llegamos tipo");
 
-        // ===== Respuestas =====
+        boolean mentionsTime = TIME_HHMM.matcher(q).find();
+        boolean asksPermission = containsAny(q, "puedo", "se puede", "podemos");
 
-        // Check-in / check-out
+        if (asksCheckIn && mentionsTime && asksPermission) {
+            asksLateArrival = true;
+        }
+
+        boolean asksSmoking = containsAny(q, "fumar", "cigarro", "cigarrillo");
+        boolean asksParty = containsAny(q, "fiesta", "ruido", "party");
+        boolean asksAvailability = containsAny(q, "disponible", "para hoy");
+
+        // FIX 2: intención reserva más robusta
+        boolean asksReservationConfirm = containsAny(
+                q,
+                "acabo de reservar",
+                "te acabo de reservar",
+                "ya reserve",
+                "ya reservamos",
+                "reserva confirmada",
+                "reserve para",
+                "reservamos para"
+        );
+
+        boolean asksBarbecue = containsAny(q, "barbacoa", "parrilla", "asado");
+
+        // ===== PRIORIDAD =====
+
+        // FIX 3: reserva con prioridad máxima (antes que amenities/horarios)
+        if (asksReservationConfirm) {
+            return "¡Perfecto! La reserva quedó registrada. Cualquier detalle adicional lo coordinamos antes de la llegada.";
+        }
+
+        if (asksAccess) {
+            return access != null ? ensureDot(access) : "Las instrucciones de acceso se envían antes del check-in.";
+        }
+
+        if (asksAddress) {
+            return address != null
+                    ? "La propiedad queda en " + address + "."
+                    : "La dirección se envía antes del check-in.";
+        }
+
+        if (asksLateArrival) {
+            return "No hay problema con llegadas tarde. El acceso está contemplado y se envía antes del check-in." +
+                    (checkIn != null ? " El check-in es a partir de las " + checkIn + "." : "");
+        }
+
+        if (asksEarly) {
+            return "El early check-in depende de la disponibilidad y se confirma más cerca de la fecha.";
+        }
+
+        if (asksLateCheckout) {
+            return "El late check-out depende de la disponibilidad y se confirma cerca de la salida.";
+        }
+
         if (asksCheckIn) {
             return checkIn != null
                     ? "El check-in es a partir de las " + checkIn + "."
@@ -80,103 +157,95 @@ public class DemoLlmClient implements LlmClient {
                     : "El horario de check-out se confirma al momento de la salida.";
         }
 
-        // Early / late
-        if (asksEarly) {
-            return "El early check-in depende de la disponibilidad y se confirma más cerca de la fecha.";
-        }
-
-        if (asksLate) {
-            return "No hay problema con llegadas tarde. El acceso está contemplado y se envía antes del check-in.";
-        }
-
-        // Acceso / dirección
-        if (asksAccess) {
-            return access != null
-                    ? access + "."
-                    : "Las instrucciones de acceso se envían antes del check-in.";
-        }
-
-        if (asksAddress) {
-            return address != null
-                    ? "La propiedad queda en " + address + "."
-                    : "La dirección se envía antes del check-in.";
-        }
-
-        // Reglas: fumar
         if (asksSmoking) {
-            if (promptLower.contains("no fumar") || promptLower.contains("no se permite fumar")) {
-                return "No está permitido fumar dentro de la propiedad.";
-            }
+            if (p.contains("no fumar") || p.contains("no se permite fumar")) return "No está permitido fumar dentro de la propiedad.";
             return "Sobre fumar, te confirmo según las reglas de la propiedad.";
         }
 
-        // Reglas: fiestas / ruido
-        // Arreglado: detecta "no fiestas" / "no se permiten fiestas" en el contexto
-        // y además evita confundir "cumpleaños tranquilo" con "fiesta permitida".
         if (asksParty) {
-            if (promptLower.contains("no fiestas") || promptLower.contains("no se permiten fiestas")) {
-                return "No se permiten fiestas en la propiedad.";
-            }
-            // Si el usuario aclara que es algo tranquilo, respondé neutral sin habilitar “fiesta”
-            if (containsAny(q, "tranquilo", "nada grande", "sin alcohol", "asado íntimo", "intimo", "íntimo")) {
-                return "Gracias por la aclaración. Igual, el uso para reuniones depende de las reglas del alojamiento y disponibilidad. Te lo confirmo.";
-            }
-            return "Sobre fiestas/ruido, lo confirmo según las reglas del alojamiento.";
+            if (p.contains("no se permiten fiestas") || p.contains("no fiestas")) return "No se permiten fiestas en la propiedad.";
+            return "Sobre reuniones o ruido, depende de las reglas del alojamiento.";
         }
 
-        // Amenities
+        // ===== EQUIPAMIENTO (ANTES QUE SERVICES) =====
+        if (asksEquipment) {
+            if (equipment != null && !equipment.trim().isEmpty()) {
+                String eq = norm(equipment);
+
+                if (containsAny(q, "sombrilla", "parasol")) {
+                    boolean hasUmbrella = containsAny(eq, "sombrilla", "parasol");
+                    return hasUmbrella
+                            ? "Sí, el alojamiento incluye sombrilla."
+                            : "No figura sombrilla en el equipamiento publicado. Si querés, lo confirmo.";
+                }
+
+                if (containsAny(q, "secador")) {
+                    boolean hasDryer = containsAny(eq, "secador");
+                    return hasDryer
+                            ? "Sí, el alojamiento incluye secador de pelo."
+                            : "No figura secador de pelo en el equipamiento publicado. Si querés, lo confirmo.";
+                }
+
+                if (containsAny(q, "toalla", "toallon")) {
+                    boolean hasTowels = containsAny(eq, "toalla", "toallas", "toallon");
+                    return hasTowels
+                            ? "Sí, el alojamiento incluye toallas."
+                            : "No figura que incluya toallas. Si querés, lo confirmo.";
+                }
+
+                if (containsAny(q, "sabana", "ropa de cama")) {
+                    boolean hasSheets = containsAny(eq, "sabana", "sabanas", "ropa de cama");
+                    return hasSheets
+                            ? "Sí, el alojamiento incluye sábanas/ropa de cama."
+                            : "No figura ropa de cama en el equipamiento publicado. Si querés, lo confirmo.";
+                }
+
+                return "El alojamiento incluye: " + equipment.trim() + ".";
+            }
+
+            return "El equipamiento depende de la propiedad. Si querés, confirmo toallas, sábanas, secador o sombrilla.";
+        }
+
+        // ===== SERVICES =====
+        if (asksServices) {
+            if (servicesIncluded == null) {
+                return "Los servicios incluidos dependen del anuncio. Si querés, te confirmo qué incluye exactamente.";
+            }
+            return servicesIncluded
+                    ? "Sí, el precio incluye los servicios habituales (electricidad, agua, gas e internet)."
+                    : "No, los servicios no están todos incluidos.";
+        }
+
         if (asksWifi) {
-            return promptLower.contains("wifi")
-                    ? "Sí, la propiedad cuenta con WiFi."
-                    : "El servicio de internet se confirma según la propiedad.";
+            if (hasWifi == null) return "Te confirmo si la propiedad cuenta con WiFi.";
+            return hasWifi ? "Sí, la propiedad cuenta con WiFi." : "No, la propiedad no cuenta con WiFi.";
+        }
+
+        if (asksParking) {
+            if (hasParking == null) return "Te confirmo las opciones de estacionamiento cercanas.";
+            return hasParking
+                    ? "Sí, la propiedad cuenta con estacionamiento."
+                    : "No cuenta con estacionamiento privado, pero hay opciones cercanas.";
         }
 
         if (asksAC) {
-            return promptLower.contains("aire acondicionado")
-                    ? "Sí, la propiedad cuenta con aire acondicionado."
-                    : "El aire acondicionado se confirma según la propiedad.";
-        }
-
-        // Consultas frecuentes reales
-        if (asksParking) {
-            // Si en el contexto aparece algo de estacionamiento, lo usamos; sino, neutral
-            if (promptLower.contains("estacionamiento:")) {
-                return "Sobre estacionamiento: reviso la info y te confirmo las opciones disponibles cerca del alojamiento.";
-            }
-            return "Sobre estacionamiento, te confirmo las opciones disponibles cerca del alojamiento.";
-        }
-
-        if (asksServices) {
-            if (promptLower.contains("servicios incluidos")) {
-                return "Sí, el precio incluye los servicios habituales (electricidad, internet, gas, etc.). Si querés, te confirmo algún detalle puntual.";
-            }
-            return "Los servicios habituales del alojamiento están incluidos. Si necesitás confirmar alguno en particular, lo reviso.";
-        }
-
-        if (asksEquipment) {
-            if (promptLower.contains("equipamiento:")) {
-                return "Sí, el alojamiento cuenta con equipamiento básico (toallas/sábanas). Si querés, te confirmo si incluye secador o sombrilla según esta propiedad.";
-            }
-            return "El alojamiento cuenta con equipamiento básico. Si necesitás confirmar algún elemento puntual, lo verifico.";
+            if (hasAC == null) return "Te confirmo si la propiedad tiene aire acondicionado.";
+            return hasAC ? "Sí, cuenta con aire acondicionado." : "No cuenta con aire acondicionado.";
         }
 
         if (asksAvailability) {
-            return "La disponibilidad se confirma al momento de la reserva según el calendario.";
-        }
-
-        if (asksReservationConfirm) {
-            return "Perfecto, la reserva quedó registrada. Coordinamos cualquier detalle antes de la llegada.";
+            return "La disponibilidad se confirma al momento de la reserva.";
         }
 
         if (asksBarbecue) {
-            return "El uso de la barbacoa depende de disponibilidad y reglas del alojamiento. Te confirmo si está habilitada para esa fecha.";
+            return "El uso de la barbacoa depende de disponibilidad y reglas del alojamiento.";
         }
 
-        // Fallback
-        return "Gracias por tu consulta. Te respondo en base a la información disponible y confirmo cualquier detalle adicional.";
+        return "Gracias por tu consulta. Te respondo según la información disponible.";
     }
 
     // ===== Helpers =====
+
     private String extractQuestion(String prompt) {
         Matcher m = QUESTION_BLOCK.matcher(prompt);
         return m.find() ? m.group(1).trim() : prompt;
@@ -188,9 +257,27 @@ public class DemoLlmClient implements LlmClient {
     }
 
     private boolean containsAny(String text, String... keys) {
-        for (String k : keys) {
-            if (text.contains(k)) return true;
-        }
+        for (String k : keys) if (text.contains(k)) return true;
         return false;
+    }
+
+    private String norm(String s) {
+        if (s == null) return "";
+        String x = s.toLowerCase(Locale.ROOT);
+        x = Normalizer.normalize(x, Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        x = x.replaceAll("[^a-z0-9:\\s]", " ");
+        return x.replaceAll("\\s+", " ").trim();
+    }
+
+    private Boolean parseYesNo(String text, Pattern p) {
+        Matcher m = p.matcher(text);
+        if (!m.find()) return null;
+        String v = m.group(1).toLowerCase(Locale.ROOT);
+        return v.equals("si") || v.equals("true");
+    }
+
+    private String ensureDot(String s) {
+        String t = s.trim();
+        return t.endsWith(".") ? t : t + ".";
     }
 }
