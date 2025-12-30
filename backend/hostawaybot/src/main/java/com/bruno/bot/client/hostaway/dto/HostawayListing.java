@@ -2,37 +2,34 @@ package com.bruno.bot.client.hostaway.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
-import java.util.List;
-import java.util.Map;
-
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record HostawayListing(
         Long id,
         String name,
+        String internalListingName,
 
-        // ubicación
+        // Dirección
+        String street,
+        String address,
+        String publicAddress,
+        String zipcode,
         String city,
         String country,
-        String address,        // a veces existe como address / street / fullAddress
-        String street,
-        String zipcode,
-        String state,
-        Double latitude,
-        Double longitude,
 
-        // horarios
-        String checkInTimeStart,
-        String checkInTimeEnd,
-        String checkOutTime,
+        // Horarios (Hostaway los manda como números)
+        Integer checkInTimeStart,
+        Integer checkInTimeEnd,
+        Integer checkOutTime,
 
-        // reglas / instrucciones
+        // Reglas / instrucciones
         String houseRules,
-        String accessInstructions, // si existiera algo así
+        String specialInstruction,
+        String keyPickup,
 
-        // amenities (según API pueden venir como lista o como map)
-        List<String> amenities,
-        Map<String, Object> listingAmenities,  // fallback si viene anidado
+        // WiFi (Hostaway lo manda directo)
+        String wifiUsername,
+        String wifiPassword,
 
-        // otros recursos (si includeResources devuelve algo anidado)
-        Map<String, Object> resources
+        // Texto útil para equipamiento/servicios (podés parsear de acá)
+        String description
 ) {}

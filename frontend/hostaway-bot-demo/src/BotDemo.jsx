@@ -1,16 +1,30 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 
 export default function BotDemo() {
-  // Mantener honesto: si no está conectado realmente por API, dejalo en false
-  const SHOW_CONNECTED_UI = false;
-
   const [listingId, setListingId] = useState("");
   const [message, setMessage] = useState("¿A qué hora es el check-in?");
   const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Estado real de conexión
+  const [connected, setConnected] = useState(false);
+
   const API_URL = import.meta.env.VITE_API_URL;
+
+  // ===== Verificar estado backend (DEMO vs HOSTAWAY) =====
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const res = await axios.get(`${API_URL}/api/health`);
+        setConnected(res?.data?.mode === "HOSTAWAY");
+      } catch {
+        setConnected(false);
+      }
+    };
+
+    if (API_URL) checkHealth();
+  }, [API_URL]);
 
   const canAsk = useMemo(() => {
     const idNum = Number(listingId);
@@ -19,12 +33,11 @@ export default function BotDemo() {
     return idOk && msgOk && !loading;
   }, [listingId, message, loading]);
 
-  const statusLabel = SHOW_CONNECTED_UI ? "CONECTADO A HOSTAWAY" : "DEMO";
-  const statusStyle = SHOW_CONNECTED_UI
+  const statusLabel = connected ? "CONECTADO A HOSTAWAY" : "DEMO";
+  const statusStyle = connected
     ? "bg-emerald-100 text-emerald-800 border-emerald-200"
     : "bg-amber-100 text-amber-800 border-amber-200";
 
-  // Preguntas que CIERRAN Fase 1 (horarios + acceso + dirección + reglas + amenities)
   const examples = [
     "¿A qué hora es el check-in?",
     "¿A qué hora es el check-out?",
@@ -35,9 +48,8 @@ export default function BotDemo() {
     "¿Se puede fumar?",
     "¿Hay wifi?",
     "¿Se permiten fiestas?",
-    // NUEVAS (basadas en chats reales)
-    "¿Dónde puedo dejar el auto estacionado? ¿Hay parking cerca?",
-    "¿El precio incluye todos los servicios (luz, agua, gas, internet)?",
+    "¿Dónde puedo dejar el auto estacionado?",
+    "¿El precio incluye todos los servicios?",
     "¿El alojamiento incluye toallas, sábanas y secador de pelo?",
     "¿Hay sombrilla para la playa?",
     "Hola, te acabo de reservar para la noche del jueves.",
@@ -71,7 +83,6 @@ export default function BotDemo() {
 
       setAnswer(`${res.data.answer}\n\n— Tiempo de respuesta: ${ms} ms`);
     } catch (err) {
-      console.error(err);
       const apiMsg =
         err?.response?.data?.message ||
         err?.response?.data?.error ||
@@ -92,15 +103,16 @@ export default function BotDemo() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 py-10 px-4">
       <div className="max-w-2xl mx-auto space-y-6">
-        {/* Header */}
+
+        {/* ===== Header ===== */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div className="flex justify-between items-start gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
+              <h1 className="text-2xl font-bold text-slate-900">
                 Hostaway Guest Bot
               </h1>
               <p className="text-sm text-slate-600 mt-1">
-                Demo de atención a huéspedes basada en datos de la propiedad (reglas, horarios, amenities).
+                Demo de atención automática a huéspedes basada en datos reales.
               </p>
             </div>
 
@@ -109,38 +121,28 @@ export default function BotDemo() {
             >
               <span
                 className={`h-2 w-2 rounded-full ${
-                  SHOW_CONNECTED_UI ? "bg-emerald-500" : "bg-amber-500"
+                  connected ? "bg-emerald-500" : "bg-amber-500"
                 }`}
               />
               {statusLabel}
             </div>
           </div>
-
-          {/* Nota de presentación (opcional) */}
-          {SHOW_CONNECTED_UI && (
-            <div className="mt-4 text-xs text-slate-500">
-              Estado mostrado como conectado solo para visualizar el flujo final.
-            </div>
-          )}
         </div>
 
-        {/* Form */}
+        {/* ===== Form ===== */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="sm:col-span-1">
+            <div>
               <label className="text-sm font-semibold text-slate-800">
                 Listing ID
               </label>
               <input
                 type="number"
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 focus:ring-2 focus:ring-blue-200"
                 value={listingId}
                 onChange={(e) => setListingId(e.target.value)}
-                placeholder="Ej: 12345"
+                placeholder="Ej: 430409"
               />
-              <p className="text-xs text-slate-500 mt-2">
-                Identificador de la propiedad en Hostaway.
-              </p>
             </div>
 
             <div className="sm:col-span-2">
@@ -148,24 +150,21 @@ export default function BotDemo() {
                 Pregunta del huésped
               </label>
               <textarea
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 min-h-[110px] focus:outline-none focus:ring-2 focus:ring-blue-200"
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 min-h-[110px] focus:ring-2 focus:ring-blue-200"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={onMessageKeyDown}
-                placeholder="Ej: ¿A qué hora es el check-in?"
               />
-              <div className="flex items-center justify-between mt-2">
-                <p className="text-xs text-slate-500">Tip: Ctrl+Enter para enviar</p>
-                <div className="text-xs text-slate-500">
-                  Idioma: <span className="font-semibold text-slate-700">ES</span>
-                </div>
+              <div className="flex justify-between text-xs text-slate-500 mt-2">
+                <span>Ctrl + Enter para enviar</span>
+                <span>Idioma: ES</span>
               </div>
             </div>
           </div>
 
-          {/* Examples */}
+          {/* ===== Examples ===== */}
           <div className="border border-slate-200 rounded-xl p-4 bg-slate-50">
-            <div className="text-sm font-semibold text-slate-800 mb-2">
+            <div className="text-sm font-semibold mb-2">
               Preguntas sugeridas (Fase 1)
             </div>
             <div className="flex flex-wrap gap-2">
@@ -174,7 +173,7 @@ export default function BotDemo() {
                   key={q}
                   type="button"
                   onClick={() => setMessage(q)}
-                  className="text-xs px-3 py-1.5 rounded-full border border-slate-200 bg-white hover:bg-slate-100 text-slate-700"
+                  className="text-xs px-3 py-1.5 rounded-full border bg-white hover:bg-slate-100"
                 >
                   {q}
                 </button>
@@ -182,36 +181,28 @@ export default function BotDemo() {
             </div>
           </div>
 
-          {/* CTA */}
+          {/* ===== CTA ===== */}
           <button
             onClick={handleAsk}
             disabled={!canAsk}
-            className={`w-full rounded-xl px-4 py-3 font-semibold text-white transition ${
-              canAsk ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-300 cursor-not-allowed"
+            className={`w-full rounded-xl px-4 py-3 font-semibold text-white ${
+              canAsk ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-300"
             }`}
           >
-            {loading ? "Consultando y generando respuesta..." : "Preguntar al Bot"}
+            {loading ? "Consultando..." : "Preguntar al Bot"}
           </button>
         </div>
 
-        {/* Answer */}
+        {/* ===== Answer ===== */}
         {answer && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-bold text-slate-900">Respuesta</h2>
-              <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                Listing: {listingId || "-"}
-              </span>
-            </div>
-            <div className="mt-3 whitespace-pre-wrap text-slate-800 leading-relaxed">
-              {answer}
-            </div>
+            <h2 className="text-lg font-bold mb-3">Respuesta</h2>
+            <pre className="whitespace-pre-wrap text-slate-800">{answer}</pre>
           </div>
         )}
 
-        {/* Footer note */}
         <div className="text-center text-xs text-slate-500">
-          Fase 1: Demo + lógica de respuestas (horarios, acceso, dirección, reglas). Fase 2: Integración con canales (Airbnb/Booking/WhatsApp).
+          Fase 1: Demo + lógica. Fase 2: Integración con Airbnb / Booking / WhatsApp.
         </div>
       </div>
     </div>

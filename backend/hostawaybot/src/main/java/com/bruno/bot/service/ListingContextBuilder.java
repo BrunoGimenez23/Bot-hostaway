@@ -9,15 +9,21 @@ import java.util.Locale;
 public class ListingContextBuilder {
 
     public String build(HostawayListing l) {
-        // Hoy tu DTO no trae amenities/access/equipment, así que quedan "No disponible".
-        // Cuando agregues campos (o resources), estos métodos pueden empezar a devolver valores reales.
 
-        String access = extractAccess(l);
-        String wifi = extractWifi(l);
-        String ac = extractAC(l);
-        String servicesIncluded = extractServicesIncluded(l);
-        String equipment = extractEquipment(l);
-        String parking = extractParking(l);
+        String address = bestAddress(l);
+
+        // Horas (15 -> "15:00")
+        String checkInStart = hour(l.checkInTimeStart());
+        String checkInEnd = hour(l.checkInTimeEnd());
+        String checkOut = hour(l.checkOutTime());
+
+        // Wifi: si hay user/pass, lo marcamos como "si"
+        String wifi = (notBlank(l.wifiUsername()) || notBlank(l.wifiPassword())) ? "si" : "no disponible";
+
+        // Equipamiento/servicios: por ahora lo inferimos desde description (rápido y útil)
+        // En tu JSON ya aparece texto sobre "sábanas y toallas", etc.
+        String inferredEquipment = inferEquipmentFromDescription(l.description());
+        String inferredServices = inferServicesFromDescription(l.description());
 
         return """
                 Propiedad: %s
@@ -27,80 +33,100 @@ public class ListingContextBuilder {
                 Acceso: %s
                 Reglas: %s
                 wifi: %s
-                aire acondicionado: %s
+                wifi usuario: %s
+                wifi password: %s
                 servicios incluidos: %s
                 equipamiento: %s
-                estacionamiento: %s
                 """.formatted(
-                safe(l.name()),
-                safeAddress(l),
-                safe(l.checkInTimeStart()),
-                safe(l.checkInTimeEnd()),
-                safe(l.checkOutTime()),
-                safe(access),
+                safe(l.internalListingName(), l.name()),
+                safe(address),
+                safe(checkInStart),
+                safe(checkInEnd),
+                safe(checkOut),
+                safe(firstNonBlank(l.specialInstruction(), l.keyPickup())),
                 safe(l.houseRules()),
                 safe(wifi),
-                safe(ac),
-                safe(servicesIncluded),
-                safe(equipment),
-                safe(parking)
+                safe(l.wifiUsername()),
+                safe(l.wifiPassword()),
+                safe(inferredServices),
+                safe(inferredEquipment)
         ).trim();
     }
 
-    // ===== Helpers =====
+    private String bestAddress(HostawayListing l) {
+        String a = firstNonBlank(l.publicAddress(), l.address(), l.street());
+        if (notBlank(a)) return a.trim();
+
+        // fallback
+        String city = safe(l.city());
+        String country = safe(l.country());
+        if (!"No disponible".equals(city) && !"No disponible".equals(country)) return city + ", " + country;
+        return "No disponible";
+    }
+
+    private String hour(Integer h) {
+        if (h == null) return null;
+        // Hostaway manda 15, 23, 11 → lo normalizamos a HH:00
+        if (h < 0 || h > 23) return String.valueOf(h);
+        return String.format("%02d:00", h);
+    }
+
+    private String inferEquipmentFromDescription(String description) {
+        String d = norm(description);
+        if (d.isBlank()) return null;
+
+        // ejemplos simples
+        boolean hasTowels = d.contains("toalla");
+        boolean hasSheets = d.contains("sabana") || d.contains("sabanas");
+        boolean hasHairDryer = d.contains("secador");
+
+        StringBuilder sb = new StringBuilder();
+        if (hasTowels) sb.append("toallas, ");
+        if (hasSheets) sb.append("sabanas, ");
+        if (hasHairDryer) sb.append("secador de pelo, ");
+
+        String out = sb.toString().trim();
+        if (out.endsWith(",")) out = out.substring(0, out.length() - 1).trim();
+
+        return out.isBlank() ? null : out;
+    }
+
+    private String inferServicesFromDescription(String description) {
+        String d = norm(description);
+        if (d.isBlank()) return null;
+
+        // ejemplo: en tu JSON aparece electricidad hasta USD 50 en estadías largas
+        if (d.contains("consumo de electricidad")) return "parcial (ver condiciones en la descripcion)";
+        return null;
+    }
+
     private String safe(String v) {
         return (v == null || v.isBlank()) ? "No disponible" : v.trim();
     }
 
-    private String safeAddress(HostawayListing l) {
-        // Con tu DTO actual solo tenemos city/country
-        String city = safe(l.city());
-        String country = safe(l.country());
-        if (!"No disponible".equals(city) && !"No disponible".equals(country)) {
-            return city + ", " + country;
-        }
-        return "No disponible".equals(city) ? country : city;
+    private String safe(String v1, String v2) {
+        String x = firstNonBlank(v1, v2);
+        return safe(x);
     }
 
-    /**
-     * Normaliza texto (por si después parseás amenities desde strings).
-     */
+    private String firstNonBlank(String... values) {
+        if (values == null) return null;
+        for (String v : values) {
+            if (v != null && !v.isBlank()) return v;
+        }
+        return null;
+    }
+
+    private boolean notBlank(String s) {
+        return s != null && !s.isBlank();
+    }
+
     private String norm(String s) {
         if (s == null) return "";
         return s.toLowerCase(Locale.ROOT)
+                .replace("á","a").replace("é","e").replace("í","i").replace("ó","o").replace("ú","u")
                 .replaceAll("[^a-z0-9\\s-]", " ")
                 .replaceAll("\\s+", " ")
                 .trim();
-    }
-
-    // ===== Extractors (hoy retornan null porque el DTO no tiene esos campos) =====
-
-    private String extractAccess(HostawayListing l) {
-        // Cuando tengas el campo real: return l.accessInstructions();
-        return null;
-    }
-
-    private String extractWifi(HostawayListing l) {
-        // Cuando tengas amenities reales:
-        // - si trae lista: buscar "wifi" y devolver "si"/"no"
-        // - si no trae: null
-        return null;
-    }
-
-    private String extractAC(HostawayListing l) {
-        return null;
-    }
-
-    private String extractServicesIncluded(HostawayListing l) {
-        // En general Hostaway no lo da como boolean; si lo tenés en descripción/reglas lo podés parsear.
-        return null;
-    }
-
-    private String extractEquipment(HostawayListing l) {
-        return null;
-    }
-
-    private String extractParking(HostawayListing l) {
-        return null;
     }
 }
